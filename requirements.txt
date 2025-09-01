@@ -3,3 +3,4 @@ pandas
 pydeck
 numpy
 altair
+esdk-obs-python

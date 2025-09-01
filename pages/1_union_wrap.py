@@ -14,6 +14,31 @@ st.write(
 to display geospatial data."""
 )
 
+# ==========================
+# get obs file list test
+from utils import list_objects
+from obs import ObsClient
+
+ENDPOINT = "https://obs.cn-north-4.myhuaweicloud.com"  # 华北-北京四
+BUCKET = "gaoyuan-49d0"
+PREFIX = "石冰川数据-遥感+无人机/鲁朗石冰川_1107/001/MSS/"
+DELIMITER = "/"  # 模拟目录
+
+# 初始化客户端（如果桶是公共读，AK/SK 可不填）
+CLIENT = ObsClient(server=ENDPOINT)
+
+# 调用函数，获取文件列表
+files = list_objects(PREFIX, CLIENT, BUCKET, DELIMITER)
+
+# 输出文件数量和部分示例
+print(f"共找到 {len(files)} 个文件")
+for f in files[:10]:  # 仅显示前 10 个示例
+    st.write(f)
+
+# 关闭客户端
+CLIENT.close()
+# ==========================
+
 url = "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E7%9F%B3%E5%86%B0%E5%B7%9D%E6%95%B0%E6%8D%AE-%E9%81%A5%E6%84%9F%2B%E6%97%A0%E4%BA%BA%E6%9C%BA/%E9%B2%81%E6%9C%97%E7%9F%B3%E5%86%B0%E5%B7%9D_1107/001/MSS/SJY01_MSS_20241107_121209_002811_062_001_L1A.jpg"# 确保请求成功
 resp = requests.get(url, timeout=10)
 # resp.raise_for_status()               # 确保请求成功
