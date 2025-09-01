@@ -1,8 +1,11 @@
 import os, io, requests
 import streamlit as st
+from streamlit_tree_select import tree_select
 import pandas as pd
 import pydeck as pdk
 from urllib.error import URLError
+
+from utils import *
 # huizai test
 st.title("联合封装")
 
@@ -14,29 +17,29 @@ st.write(
 to display geospatial data."""
 )
 
+
+
 # ==========================
-# get obs file list test
-from utils import list_objects
-from obs import ObsClient
+# get obs file list tree test
+st.title("🐙 OBS 文件树展示")
+st.subheader("选择 OBS 文件或文件夹")
 
-ENDPOINT = "https://obs.cn-north-4.myhuaweicloud.com"  # 华北-北京四
+# 配置 OBS
+ENDPOINT = "https://obs.cn-north-4.myhuaweicloud.com"
 BUCKET = "gaoyuan-49d0"
-PREFIX = "石冰川数据-遥感+无人机/鲁朗石冰川_1107/001/MSS/"
-DELIMITER = "/"  # 模拟目录
+PREFIX = "石冰川数据-遥感+无人机"
 
-# 初始化客户端（如果桶是公共读，AK/SK 可不填）
-CLIENT = ObsClient(server=ENDPOINT)
+client = ObsClient(server=ENDPOINT)
+all_objs = list_all_objects(PREFIX, client, BUCKET, max_depth=3)  # 可调 max_depth
+client.close()
 
-# 调用函数，获取文件列表
-files = list_objects(PREFIX, CLIENT, BUCKET, DELIMITER)
+# 构建树节点
+nodes = build_tree(all_objs, prefix=PREFIX)
 
-# 输出文件数量和部分示例
-print(f"共找到 {len(files)} 个文件")
-for f in files[:10]:  # 仅显示前 10 个示例
-    st.write(f)
+# 展示
+return_select = tree_select(nodes)
+st.write("你选择的节点：", return_select)
 
-# 关闭客户端
-CLIENT.close()
 # ==========================
 
 url = "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E7%9F%B3%E5%86%B0%E5%B7%9D%E6%95%B0%E6%8D%AE-%E9%81%A5%E6%84%9F%2B%E6%97%A0%E4%BA%BA%E6%9C%BA/%E9%B2%81%E6%9C%97%E7%9F%B3%E5%86%B0%E5%B7%9D_1107/001/MSS/SJY01_MSS_20241107_121209_002811_062_001_L1A.jpg"# 确保请求成功

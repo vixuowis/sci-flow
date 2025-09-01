@@ -1,5 +1,7 @@
 import os
 from obs import ObsClient
+import streamlit as st
+from streamlit_tree_select import tree_select
 
 def list_objects(prefix, client, bucket, delimiter="/"):
     """
@@ -45,6 +47,69 @@ def list_objects(prefix, client, bucket, delimiter="/"):
 
     return all_files
 
+
+
+
+# ================= OBS 获取文件函数 =================
+def list_all_objects(prefix, client, bucket, max_depth=None):
+    def count_depth(key):
+        return len(key.strip("/").split("/"))
+
+    items = []
+    marker = ""
+
+    while True:
+        resp = client.listObjects(
+            bucketName=bucket,
+            prefix=prefix,
+            marker=marker
+        )
+        if resp.status >= 300:
+            st.error(f"OBS 错误: {resp.errorCode}, {resp.errorMessage}")
+            break
+
+        for obj in getattr(resp.body, "contents", []) or []:
+            if max_depth is not None and count_depth(obj.key) > count_depth(prefix) + max_depth:
+                continue
+            items.append(obj.key)
+
+        if getattr(resp.body, "isTruncated", False):
+            marker = getattr(resp.body, "nextMarker", "")
+        else:
+            break
+
+    return items
+
+# ================= 将对象列表转成树结构 =================
+def build_tree(keys, prefix=""):
+    """
+    将 OBS 对象 key 列表转换为 streamlit_tree_select 所需的树形节点
+    value 使用完整路径保证唯一性
+    """
+    tree = {}
+
+    for key in keys:
+        parts = key[len(prefix):].strip("/").split("/")
+        current = tree
+        for i, part in enumerate(parts):
+            if part not in current:
+                # value 使用完整路径
+                node_value = "/".join(parts[:i+1])
+                current[part] = {"__value": node_value}
+            current = current[part]
+
+    def dict_to_nodes(d):
+        nodes = []
+        for k, v in d.items():
+            node = {"label": k, "value": v["__value"]}
+            # 排除 __value 避免被当成子节点
+            children_dict = {kk: vv for kk, vv in v.items() if kk != "__value"}
+            if children_dict:
+                node["children"] = dict_to_nodes(children_dict)
+            nodes.append(node)
+        return nodes
+
+    return dict_to_nodes(tree)
 
 if __name__ == "__main__":
     # 配置
