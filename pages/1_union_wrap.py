@@ -1,3 +1,4 @@
+import os, io, requests
 import streamlit as st
 import pandas as pd
 import pydeck as pdk
@@ -13,10 +14,10 @@ st.write(
 to display geospatial data."""
 )
 
-import requests, io
-
-url = "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E7%9F%B3%E5%86%B0%E5%B7%9D%E6%95%B0%E6%8D%AE-%E9%81%A5%E6%84%9F%2B%E6%97%A0%E4%BA%BA%E6%9C%BA/%E9%B2%81%E6%9C%97%E7%9F%B3%E5%86%B0%E5%B7%9D_1107/001/MSS/SJY01_MSS_20241107_121209_002811_062_001_L1A.jpg?Expires=1756728492&AccessKeyId=HPUAJG9A804YAQ6QIVSS&Signature=9or72F8v5SM0/a3daRS7wMwzCxY%3D"# 确保请求成功
-st.image(url, caption="the image")
+url = "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E7%9F%B3%E5%86%B0%E5%B7%9D%E6%95%B0%E6%8D%AE-%E9%81%A5%E6%84%9F%2B%E6%97%A0%E4%BA%BA%E6%9C%BA/%E9%B2%81%E6%9C%97%E7%9F%B3%E5%86%B0%E5%B7%9D_1107/001/MSS/SJY01_MSS_20241107_121209_002811_062_001_L1A.jpg"# 确保请求成功
+resp = requests.get(url, timeout=10)
+# resp.raise_for_status()               # 确保请求成功
+st.image(io.BytesIO(resp.content), caption="the image")
 
 import pandas as pd
 import pydeck as pdk
