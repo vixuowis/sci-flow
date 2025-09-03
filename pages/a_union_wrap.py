@@ -1,5 +1,6 @@
 from pages.a_union_wrap_pages.scene1_earth import run_scene1
 from pages.a_union_wrap_pages.scene2_sea import run_scene2
+from pages.a_union_wrap_pages.scene_4_agriculture import run_scene4
 from utils import *
 
 st.title("联合封装")
@@ -17,5 +18,5 @@ match st.session_state.data_scene:
         run_scene1()
     case "海洋牧场":
         run_scene2()
-    case _: # 默认情况，类似于 switch 的 default
-        run_scene1()
+    case "农业智慧": # 默认情况，类似于 switch 的 default
+        run_scene4()
