@@ -5,3 +5,4 @@ numpy
 altair
 esdk-obs-python
 streamlit-tree-select
+obspy
