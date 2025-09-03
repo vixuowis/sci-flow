@@ -1,7 +1,6 @@
 import streamlit as st
 
-from pages.b_realtime_wrap_pages.scene1_earth import run_scene1
-from pages.b_realtime_wrap_pages.scene2_sea import run_scene2
+from pages.b_realtime_wrap_pages import run_scene1, run_scene2, run_scene3, run_scene4, run_scene5
 
 st.title("实时封装")
 
@@ -18,5 +17,11 @@ match st.session_state.data_scene:
         run_scene1()
     case "海洋牧场":
         run_scene2()
+    case "高原脆弱":
+        run_scene3()
+    case "农业智慧":
+        run_scene4()
+    case "森林生态":
+        run_scene5()
     case _: # 默认情况，类似于 switch 的 default
         run_scene1()
