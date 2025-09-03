@@ -16,10 +16,191 @@ from obspy import read
 # 1) 全局 URL 列表（请替换为你的可访问 mseed 链接）
 #    文件名必须形如：IU_AFI_-13.91_-171.78_waveforms.mseed
 # ==============================
-url_list = [
-    "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E5%9C%B0%E8%B4%A8%E7%81%BE%E5%AE%B3-%E6%96%87%E6%9C%AC%2B%E9%81%A5%E6%84%9F%2B%E6%97%B6%E5%BA%8F/IRIS/dataset_earthquake/IU_AFI_-13.91_-171.78_waveforms.mseed",
-    "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E5%9C%B0%E8%B4%A8%E7%81%BE%E5%AE%B3-%E6%96%87%E6%9C%AC%2B%E9%81%A5%E6%84%9F%2B%E6%97%B6%E5%BA%8F/IRIS/dataset_earthquake/IU_CASY_-66.28_110.54_waveforms.mseed",
-]
+
+import os
+import re
+from typing import List, Tuple, Optional
+from urllib.parse import urlparse, quote, unquote
+
+from obs import ObsClient  # pip install esdk-obs-python
+
+# -----------------------
+# 请在此处配置或从环境读取
+# -----------------------
+ENDPOINT = "https://obs.cn-north-4.myhuaweicloud.com"
+BUCKET = "gaoyuan-49d0"
+PREFIX = "地质灾害-文本+遥感+时序/IRIS/dataset_earthquake/" 
+
+# # 如果需要凭证则填写，若 OBS 公开可访问可留空并只传 server（或使用 ENV 机制）
+# ACCESS_KEY = None  # 或 "你的AK"
+# SECRET_KEY = None  # 或 "你的SK"
+
+# -----------------------
+# 内部实现
+# -----------------------
+
+def _create_obs_client(endpoint: str, access_key: Optional[str], secret_key: Optional[str]) -> ObsClient:
+    """创建 ObsClient：若提供 AK/SK 则使用，否则只传 server（可借助 ENV/ECS 策略）。"""
+    if access_key and secret_key:
+        return ObsClient(access_key_id=access_key, secret_access_key=secret_key, server=endpoint)
+    else:
+        # 如果环境变量或 ECS 授权可用，下面的构造也能工作（参考官方 security_provider_policy 选项）
+        return ObsClient(server=endpoint)
+
+
+def list_all_objects_under_prefix(client: ObsClient, bucket: str, prefix: str, max_keys: int = 1000) -> List[str]:
+    """
+    使用 listObjects + marker 分页获取 prefix 下的所有 object keys（递归）。
+    返回 object key 列表（object name，不含 bucket）。
+    注意：每次最多 max_keys（上限 1000）。
+    参考文档：listObjects / is_truncated / next_marker。:contentReference[oaicite:3]{index=3}
+    """
+    # 保证 prefix 是对象名形式（非 URL 编码）
+    prefix = prefix.lstrip('/')
+    keys = []
+    marker = None
+
+    while True:
+        resp = client.listObjects(bucket, prefix=prefix, marker=marker, max_keys=max_keys)
+        if resp.status >= 300:
+            raise RuntimeError(f"listObjects failed: status={resp.status}, reason={resp.reason}, msg={getattr(resp, 'errorMessage', '')}")
+
+        body = resp.body
+        contents = getattr(body, "contents", []) or []
+        for c in contents:
+            # 支持属性访问或字典访问（兼容 SDK 返回格式）
+            key = getattr(c, "key", None) or (c.get("key") if isinstance(c, dict) else None)
+            if key:
+                keys.append(key)
+
+        # 翻页判断
+        if not getattr(body, "is_truncated", False):
+            break
+
+        # next marker
+        next_marker = getattr(body, "next_marker", None) or getattr(body, "nextMarker", None)
+        if next_marker:
+            marker = next_marker
+        else:
+            # 兼容处理：使用最后一个 key 的值
+            if contents:
+                last_key = None
+                last = contents[-1]
+                last_key = getattr(last, "key", None) or (last.get("key") if isinstance(last, dict) else None)
+                if last_key:
+                    marker = last_key
+                else:
+                    break
+            else:
+                break
+
+    return keys
+
+
+def filter_and_dedup_mseed(keys: List[str], prefix: str, max_depth: Optional[int] = None) -> List[str]:
+    """
+    从 keys（完整 object key 列表）筛选 .mseed 文件，并按规则去重：
+    - 忽略 depth 超出 max_depth 的文件（若提供）
+    - 对于类似 `xx.mseed`, `xx_1.mseed`, `xx_2.mseed` 的组，只保留 first choice:
+        * 优先选择没有 _数字 的原名 `xx.mseed`（如果存在）
+        * 否则选择该组中排序最靠前的一个
+    返回选中的 object keys（相对于 bucket）。
+    """
+    prefix = prefix.rstrip('/') + '/' if prefix and not prefix.endswith('/') else prefix
+    mseed_keys = []
+    for k in keys:
+        if not k.lower().endswith('.mseed'):
+            continue
+        # depth 限制（相对于 prefix 的相对路径）
+        if prefix and k.startswith(prefix):
+            rel = k[len(prefix):]
+        else:
+            rel = k
+        if max_depth is not None:
+            # 如果 rel 为空或以 / 结尾，计算深度为 segments 数
+            depth = 0 if rel == "" else rel.count('/')
+            if depth > max_depth:
+                continue
+        mseed_keys.append(k)
+
+    # group by stem: 去掉结尾的 "_数字"（仅在 .mseed 扩展名前）
+    groups = {}
+    for k in mseed_keys:
+        fname = os.path.basename(k)
+        # stem 去除 _1,_2 形式的尾号（仅最后一段为数字时）
+        stem = re.sub(r'(_\d+)(?=\.mseed$)', '', fname, flags=re.IGNORECASE)
+        groups.setdefault(stem, []).append(k)
+
+    selected = []
+    for stem, lst in groups.items():
+        # 优先找纯名 stem + ".mseed"
+        plain = stem if stem.lower().endswith('.mseed') else f"{stem}.mseed"
+        exact = None
+        for k in lst:
+            if os.path.basename(k) == plain:
+                exact = k
+                break
+        if exact:
+            chosen = exact
+        else:
+            chosen = sorted(lst)[0]  # 否则选择字典序最先的做代表
+        selected.append(chosen)
+
+    # 返回排序过的结果（便于稳定）
+    return sorted(selected)
+
+
+def build_public_urls(endpoint: str, bucket: str, keys: List[str]) -> List[str]:
+    """
+    根据 endpoint 与 bucket 构造公开访问 URL 列表。
+    - 若 endpoint 主机名已包含 bucket（例如 user 给的是 'https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com'），直接用该 endpoint 作为 base；
+    - 否则按照 {scheme}://{bucket}.{netloc} 构造 base。
+    对 object key 做 urllib.parse.quote 编码（保留 '/').
+    """
+    endpoint = endpoint.rstrip('/')
+    parsed = urlparse(endpoint if '://' in endpoint else 'https://' + endpoint)
+    scheme = parsed.scheme or 'https'
+    netloc = parsed.netloc or parsed.path
+
+    if netloc.startswith(bucket + "."):
+        base = f"{scheme}://{netloc}"
+    else:
+        base = f"{scheme}://{bucket}.{netloc}"
+
+    urls = [f"{base}/{quote(k, safe='/')}" for k in keys]
+    return urls
+
+
+def build_mseed_url_list(
+    endpoint: str,
+    bucket: str,
+    prefix: str,
+    access_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    max_depth: Optional[int] = None,
+) -> List[str]:
+    """
+    高层函数：列出 prefix 下的所有 mseed（去重），返回可访问 URL 列表。
+    """
+    # 确保 prefix 是解码后的路径（若用户不慎传了 URL 编码，先解码）
+    prefix = unquote(prefix)
+    client = _create_obs_client(endpoint, access_key, secret_key)
+    try:
+        keys = list_all_objects_under_prefix(client, bucket, prefix)
+        mseed_keys = filter_and_dedup_mseed(keys, prefix, max_depth=max_depth)
+        urls = build_public_urls(endpoint, bucket, mseed_keys)
+        return urls
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+# url_list = [
+#     "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E5%9C%B0%E8%B4%A8%E7%81%BE%E5%AE%B3-%E6%96%87%E6%9C%AC%2B%E9%81%A5%E6%84%9F%2B%E6%97%B6%E5%BA%8F/IRIS/dataset_earthquake/IU_AFI_-13.91_-171.78_waveforms.mseed",
+#     "https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com/%E5%9C%B0%E8%B4%A8%E7%81%BE%E5%AE%B3-%E6%96%87%E6%9C%AC%2B%E9%81%A5%E6%84%9F%2B%E6%97%B6%E5%BA%8F/IRIS/dataset_earthquake/IU_CASY_-66.28_110.54_waveforms.mseed",
+# ]
+url_list = build_mseed_url_list(ENDPOINT, BUCKET, PREFIX, None, None, max_depth=None)
 
 # ------------------------------
 # 工具函数
