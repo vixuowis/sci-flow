@@ -180,51 +180,43 @@ df_now["b"] = np.where(df_now["amplitude"] >= 0, 60, 255)
 
 # 动态高度缩放：让 99 分位高度 ~ 1000m
 p99 = float(df_now["height"].quantile(0.99)) if len(df_now) > 1 else float(df_now["height"].max())
-elev_scale = 10.0
+elev_scale = 1000.0
 
 # 半径（米）：全局地理范围大时可适当加大
-radius_m = 200000
+radius_m = 100000
 
 tooltip = {
     "html": "<b>{net}.{sta}</b><br/>amp: {amplitude}<br/>lat: {lat}, lon: {lon}<br/>{minute} slot {slot}",
     "style": {"color": "white"},
 }
 
-# HexagonLayer 展示振幅 -> 柱高
-hex_layer = pdk.Layer(
-    "HexagonLayer",
+layer = pdk.Layer(
+    "ColumnLayer",
     data=df_now,
-    get_position="[lon, lat]",
-    radius=radius_m,              # 六边形半径 (米)，可调
-    elevation_scale=0.05,      # 控制柱子高度（可调大）
-    elevation_range=[0, 5000], # 柱子高度范围
-    get_weight="amplitude",    # 振幅作为权重
+    get_position="[lon, lat]",     # 注意顺序：经度在前
+    get_elevation="height",
+    elevation_scale=elev_scale,     # 调整高度
+    radius=radius_m,
+    get_fill_color="[r, g, b, 180]",
     pickable=True,
-    extruded=True,
-    coverage=1,
+    auto_highlight=True,
 )
 
-# ScatterplotLayer 展示站点位置
-scatter_layer = pdk.Layer(
-    "ScatterplotLayer",
-    data=df_now,
-    get_position="[lon, lat]",
-    get_color="[200, 30, 0, 160]",  # 红色点
-    get_radius=15000,               # 圆点大小 (米)
-)
-
+# 视角：以所有站点中心为基准
 view_state = pdk.ViewState(
-    latitude=df_now["lat"].mean(),
-    longitude=df_now["lon"].mean(),
+    latitude=center_lat,
+    longitude=center_lon,
     zoom=2,
-    pitch=50,
+    pitch=45,
+    bearing=0,
 )
 
+# 使用 map_style=None（不需要 token）
 deck = pdk.Deck(
-    layers=[hex_layer, scatter_layer],
+    layers=[layer],
     initial_view_state=view_state,
-    map_style=None,   # Streamlit 自带地图样式
-    tooltip={"text": "{net}.{sta}\nAmp: {amplitude}"}
+    tooltip=tooltip,
+    map_style=None,
 )
 
 st.pydeck_chart(deck, use_container_width=True)
