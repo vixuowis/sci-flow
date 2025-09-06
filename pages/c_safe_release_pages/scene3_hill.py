@@ -129,7 +129,7 @@ def run_scene3():
 
     # -------------------- UI --------------------
     st.set_page_config(page_title="高原脆弱场景数据可视化", layout="wide")
-    st.title("高原生态环境数据模拟")
+    st.title("高原生态环境数据可视化")
 
     # Controls
     with st.sidebar:
