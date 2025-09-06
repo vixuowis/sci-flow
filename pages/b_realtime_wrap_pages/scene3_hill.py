@@ -33,7 +33,7 @@ def run_scene3():
     # --- Sidebar controls ---
     st.sidebar.header("Simulation controls")
     interval = st.sidebar.slider("更新间隔 (秒)", min_value=0.1, max_value=5.0, value=0.5, step=0.1,
-                                 help="每隔多少秒生成一个新数据点")
+                                 help="每隔多少秒获取一个新数据点")
     max_points = st.sidebar.number_input("最大保存点数 (超过则丢弃最早数据)", min_value=20, max_value=20000, value=300, step=10)
     st.sidebar.markdown("**启动 / 停止 / 重置**")
     start_btn = st.sidebar.button("Start")
@@ -213,7 +213,7 @@ def run_scene3():
                         stats_container.write(f"- **{k}**: {v}")
 
     except Exception as e:
-        st.error(f"模拟运行时发生异常: {e}")
+        st.error(f"运行时发生异常: {e}")
         st.session_state.running = False
 
 if __name__ == "__main__":

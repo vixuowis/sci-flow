@@ -6,3 +6,5 @@ altair
 esdk-obs-python
 streamlit-tree-select
 obspy
+beautifulsoup4
+streamlit-autorefresh
