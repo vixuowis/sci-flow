@@ -21,8 +21,8 @@ except Exception:
     st_autorefresh = None
 
 # ==============================
-# 1) 全局 URL 列表（请替换为你的可访问 mseed 链接）
-#    文件名必须形如：IU_AFI_-13.91_-171.78_waveforms.mseed
+# 1) Global URL list (replace with your accessible mseed links)
+#    Filenames must be in the form: IU_AFI_-13.91_-171.78_waveforms.mseed
 # ==============================
 
 import os
@@ -41,37 +41,37 @@ import pydeck as pdk
 from obspy import read
 
 # -----------------------
-# 请在此处配置或从环境读取
+# Configure here or read from environment
 # -----------------------
 ENDPOINT = "https://obs.cn-north-4.myhuaweicloud.com"
 BUCKET = "gaoyuan-49d0"
 PREFIX = "地质灾害-文本+遥感+时序/IRIS/dataset_earthquake/" 
 
-# # 如果需要凭证则填写，若 OBS 公开可访问可留空并只传 server（或使用 ENV 机制）
-# ACCESS_KEY = None  # 或 "你的AK"
-# SECRET_KEY = None  # 或 "你的SK"
+# # If credentials are required, fill in. If OBS is publicly accessible, leave blank and only provide server (or use ENV mechanism)
+# ACCESS_KEY = None  # or "your AK"
+# SECRET_KEY = None  # or "your SK"
 
 # -----------------------
-# 内部实现
+# Internal implementation
 # -----------------------
 
 def _create_obs_client(endpoint: str, access_key: Optional[str], secret_key: Optional[str]) -> ObsClient:
-    """创建 ObsClient：若提供 AK/SK 则使用，否则只传 server（可借助 ENV/ECS 策略）。"""
+    """Create ObsClient: if AK/SK are provided, use them; otherwise only provide server (ENV/ECS strategy may work)."""
     if access_key and secret_key:
         return ObsClient(access_key_id=access_key, secret_access_key=secret_key, server=endpoint)
     else:
-        # 如果环境变量或 ECS 授权可用，下面的构造也能工作（参考官方 security_provider_policy 选项）
+        # If environment variables or ECS authorization are available, this constructor also works (see official security_provider_policy option)
         return ObsClient(server=endpoint)
 
 
 def list_all_objects_under_prefix(client: ObsClient, bucket: str, prefix: str, max_keys: int = 1000) -> List[str]:
     """
-    使用 listObjects + marker 分页获取 prefix 下的所有 object keys（递归）。
-    返回 object key 列表（object name，不含 bucket）。
-    注意：每次最多 max_keys（上限 1000）。
-    参考文档：listObjects / is_truncated / next_marker。:contentReference[oaicite:3]{index=3}
+    Use listObjects + marker to paginate and fetch all object keys under a prefix (recursive).
+    Returns a list of object keys (object names without bucket).
+    Note: max_keys per request (limit 1000).
+    Reference: listObjects / is_truncated / next_marker.
     """
-    # 保证 prefix 是对象名形式（非 URL 编码）
+    # Ensure prefix is in object key form (not URL-encoded)
     prefix = prefix.lstrip('/')
     keys = []
     marker = None
@@ -84,21 +84,21 @@ def list_all_objects_under_prefix(client: ObsClient, bucket: str, prefix: str, m
         body = resp.body
         contents = getattr(body, "contents", []) or []
         for c in contents:
-            # 支持属性访问或字典访问（兼容 SDK 返回格式）
+            # Support attribute or dict access (to handle SDK return formats)
             key = getattr(c, "key", None) or (c.get("key") if isinstance(c, dict) else None)
             if key:
                 keys.append(key)
 
-        # 翻页判断
+        # Pagination check
         if not getattr(body, "is_truncated", False):
             break
 
-        # next marker
+        # Next marker
         next_marker = getattr(body, "next_marker", None) or getattr(body, "nextMarker", None)
         if next_marker:
             marker = next_marker
         else:
-            # 兼容处理：使用最后一个 key 的值
+            # Fallback: use the last key
             if contents:
                 last_key = None
                 last = contents[-1]
@@ -115,41 +115,38 @@ def list_all_objects_under_prefix(client: ObsClient, bucket: str, prefix: str, m
 
 def filter_and_dedup_mseed(keys: List[str], prefix: str, max_depth: Optional[int] = None) -> List[str]:
     """
-    从 keys（完整 object key 列表）筛选 .mseed 文件，并按规则去重：
-    - 忽略 depth 超出 max_depth 的文件（若提供）
-    - 对于类似 `xx.mseed`, `xx_1.mseed`, `xx_2.mseed` 的组，只保留 first choice:
-        * 优先选择没有 _数字 的原名 `xx.mseed`（如果存在）
-        * 否则选择该组中排序最靠前的一个
-    返回选中的 object keys（相对于 bucket）。
+    From keys (full object key list), filter .mseed files and deduplicate:
+    - Ignore files exceeding max_depth (if provided)
+    - For groups like `xx.mseed`, `xx_1.mseed`, `xx_2.mseed`, keep first choice:
+        * Prefer the plain name `xx.mseed` (if exists)
+        * Otherwise, pick the lexicographically first
+    Returns the selected object keys (relative to bucket).
     """
     prefix = prefix.rstrip('/') + '/' if prefix and not prefix.endswith('/') else prefix
     mseed_keys = []
     for k in keys:
         if not k.lower().endswith('.mseed'):
             continue
-        # depth 限制（相对于 prefix 的相对路径）
+        # Depth limit (relative path to prefix)
         if prefix and k.startswith(prefix):
             rel = k[len(prefix):]
         else:
             rel = k
         if max_depth is not None:
-            # 如果 rel 为空或以 / 结尾，计算深度为 segments 数
             depth = 0 if rel == "" else rel.count('/')
             if depth > max_depth:
                 continue
         mseed_keys.append(k)
 
-    # group by stem: 去掉结尾的 "_数字"（仅在 .mseed 扩展名前）
+    # Group by stem: remove trailing "_number" (before .mseed extension)
     groups = {}
     for k in mseed_keys:
         fname = os.path.basename(k)
-        # stem 去除 _1,_2 形式的尾号（仅最后一段为数字时）
         stem = re.sub(r'(_\d+)(?=\.mseed$)', '', fname, flags=re.IGNORECASE)
         groups.setdefault(stem, []).append(k)
 
     selected = []
     for stem, lst in groups.items():
-        # 优先找纯名 stem + ".mseed"
         plain = stem if stem.lower().endswith('.mseed') else f"{stem}.mseed"
         exact = None
         for k in lst:
@@ -159,19 +156,18 @@ def filter_and_dedup_mseed(keys: List[str], prefix: str, max_depth: Optional[int
         if exact:
             chosen = exact
         else:
-            chosen = sorted(lst)[0]  # 否则选择字典序最先的做代表
+            chosen = sorted(lst)[0]
         selected.append(chosen)
 
-    # 返回排序过的结果（便于稳定）
     return sorted(selected)
 
 
 def build_public_urls(endpoint: str, bucket: str, keys: List[str]) -> List[str]:
     """
-    根据 endpoint 与 bucket 构造公开访问 URL 列表。
-    - 若 endpoint 主机名已包含 bucket（例如 user 给的是 'https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com'），直接用该 endpoint 作为 base；
-    - 否则按照 {scheme}://{bucket}.{netloc} 构造 base。
-    对 object key 做 urllib.parse.quote 编码（保留 '/').
+    Build public access URL list from endpoint and bucket.
+    - If endpoint already includes bucket (e.g., https://bucket.obs.region.myhuaweicloud.com), use as base
+    - Otherwise, construct as {scheme}://{bucket}.{netloc}
+    Encode object key with urllib.parse.quote (preserve '/').
     """
     endpoint = endpoint.rstrip('/')
     parsed = urlparse(endpoint if '://' in endpoint else 'https://' + endpoint)
@@ -196,9 +192,9 @@ def build_mseed_url_list(
     max_depth: Optional[int] = None,
 ) -> List[str]:
     """
-    高层函数：列出 prefix 下的所有 mseed（去重），返回可访问 URL 列表。
+    High-level function: list all mseed files under prefix (deduplicated), return accessible URLs.
     """
-    # 确保 prefix 是解码后的路径（若用户不慎传了 URL 编码，先解码）
+    # Ensure prefix is decoded (if user accidentally provided URL-encoded string)
     prefix = unquote(prefix)
     client = _create_obs_client(endpoint, access_key, secret_key)
     try:
@@ -215,8 +211,8 @@ def build_mseed_url_list(
 
 def list_all_objects_under_prefix(client, bucket: str, prefix: str, max_keys: int = 1000) -> List[Dict]:
     """
-    列出 prefix 下的所有对象（返回 dict 列表：{key, size, last_modified}）。
-    兼容不同 SDK 返回结构（属性名或 dict）。
+    List all objects under prefix (return list of dicts: {key, size, last_modified}).
+    Compatible with different SDK structures (attribute or dict).
     """
     prefix = prefix.lstrip('/')
     keys = []
@@ -229,14 +225,12 @@ def list_all_objects_under_prefix(client, bucket: str, prefix: str, max_keys: in
         body = getattr(resp, "body", resp)
         contents = getattr(body, "contents", None) or (body.get("contents") if isinstance(body, dict) else []) or []
         for c in contents:
-            # support attribute or dict
             key = getattr(c, "key", None) or (c.get("key") if isinstance(c, dict) else None)
             size = getattr(c, "size", None) or (c.get("size") if isinstance(c, dict) else None)
-            # last modified can be lastModified / last_modified
             lm = getattr(c, "lastModified", None) or getattr(c, "last_modified", None) or (c.get("lastModified") if isinstance(c, dict) else c.get("last_modified") if isinstance(c, dict) else None)
             if key:
                 keys.append({"key": key, "size": int(size) if size is not None else None, "last_modified": lm})
-        # 翻页判断
+        # Pagination check
         is_truncated = getattr(body, "is_truncated", None)
         if is_truncated is None:
             is_truncated = body.get("is_truncated") if isinstance(body, dict) else False
@@ -246,7 +240,7 @@ def list_all_objects_under_prefix(client, bucket: str, prefix: str, max_keys: in
         if next_marker:
             marker = next_marker
         else:
-            # fallback: use last seen key
+            # Fallback: use last seen key
             if contents:
                 last = contents[-1]
                 last_key = getattr(last, "key", None) or (last.get("key") if isinstance(last, dict) else None)
@@ -261,17 +255,16 @@ def list_all_objects_under_prefix(client, bucket: str, prefix: str, max_keys: in
 
 def build_public_urls(endpoint: str, bucket: str, keys: List[str]) -> List[str]:
     """
-    根据 endpoint 与 bucket 构造公开访问 URL 列表（对 key 做 quote）。
-    支持两类 endpoint：
-     - endpoint 的域名就是完整的访问域（如: https://gaoyuan-49d0.obs.cn-north-4.myhuaweicloud.com）
-     - 或者通用 endpoint (https://obs.cn-north-4.myhuaweicloud.com)，此时构造 {scheme}://{bucket}.{netloc}/{key}
+    Build public access URL list (quote keys).
+    Supports two endpoint types:
+     - Endpoint already includes bucket (e.g. https://bucket.obs.region.myhuaweicloud.com)
+     - Generic endpoint (https://obs.region.myhuaweicloud.com), then construct {scheme}://{bucket}.{netloc}/{key}
     """
     endpoint = endpoint.rstrip('/')
     parsed = urlparse(endpoint if '://' in endpoint else 'https://' + endpoint)
     scheme = parsed.scheme or 'https'
     netloc = parsed.netloc or parsed.path
 
-    # 如果 endpoint 本身就是 bucket 专属域
     if netloc.startswith(bucket + "."):
         base = f"{scheme}://{netloc}"
     else:
@@ -283,16 +276,13 @@ def build_public_urls(endpoint: str, bucket: str, keys: List[str]) -> List[str]:
 
 def parse_filename_info(key: str) -> Dict:
     """
-    从 object key（或文件名）中尝试解析信息：
-    期望文件名片段： channel_station_lon_lat_[tag][_idx].ext
-    返回字典： channel, station, lon, lat, tag, idx, ext, kind
-    若解析失败，大多字段为 None。
+    Parse information from object key (or filename):
+    Expected filename pattern: channel_station_lon_lat_[tag][_idx].ext
+    Returns dict: channel, station, lon, lat, tag, idx, ext, kind
+    If parsing fails, most fields are None.
     """
     fname = os.path.basename(key)
-    # decode percent encoding
     fname = unquote(fname)
-    # pattern: channel_station_[lon]_[lat]_[tag maybe]_idx? .ext
-    # tag 可能是 'satellite' 'waveform' 'waveforms' 'waveform' etc.
     m = re.match(r'(?P<channel>[^_]+)_(?P<station>[^_]+)_(?P<lon>-?\d+(?:\.\d+)?)_(?P<lat>-?\d+(?:\.\d+)?)(?:_(?P<tag>[^.]+))?\.(?P<ext>[^.]+)$', fname)
     info = {"filename": fname, "channel": None, "station": None, "lon": None, "lat": None, "tag": None, "idx": None, "ext": None, "kind": "other", "region": None}
     if m:
@@ -303,7 +293,6 @@ def parse_filename_info(key: str) -> Dict:
         raw_tag = m.group("tag")
         info["ext"] = m.group("ext").lower()
         if raw_tag:
-            # remove trailing _number e.g., waveform_2 -> waveform, idx=2
             m_idx = re.match(r'(?P<tag_base>.+?)_(?P<idx>\d+)$', raw_tag)
             if m_idx:
                 info["tag"] = m_idx.group("tag_base")
@@ -314,7 +303,7 @@ def parse_filename_info(key: str) -> Dict:
             info["tag"] = None
         info["region"] = f"{info['lat']:.6f},{info['lon']:.6f}" if info["lat"] is not None else None
     else:
-        # 如果无法匹配上述形式，尝试只抓取经纬对（两个连续浮点数）
+        # If it cannot match above, try extracting lon/lat pair (two floats)
         m2 = re.search(r'(-?\d+\.\d+)_(-?\d+\.\d+)', fname)
         if m2:
             info["lon"] = float(m2.group(1))
@@ -323,7 +312,6 @@ def parse_filename_info(key: str) -> Dict:
         ext = fname.split('.')[-1].lower() if '.' in fname else None
         info["ext"] = ext
 
-    # map extension -> kind
     if info["ext"] in ("png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"):
         info["kind"] = "image"
     elif info["ext"] in ("mseed", "msd", "sac", "wav"):
@@ -337,20 +325,18 @@ def parse_filename_info(key: str) -> Dict:
 
 def dedup_objects(entries: List[Dict]) -> List[Dict]:
     """
-    对 entries（每项包含 'key','size','last_modified','filename' 等）做去重：
-    - 对于 filename 中存在 _1/_2 等后缀的组，优先保留没有后缀的（原名），否则选择最新 last_modified。
-    返回筛选后的 entries 列表。
+    Deduplicate entries (each containing 'key','size','last_modified','filename', etc.):
+    - For groups with _1/_2 suffix, prefer the plain name (original); otherwise choose the latest last_modified.
+    Returns the filtered entries list.
     """
     groups = {}
     for e in entries:
         fname = e["filename"]
-        # stem: remove trailing _\d+ before extension
         stem = re.sub(r'(_\d+)(?=\.[^.]+$)', '', fname, flags=re.IGNORECASE)
         groups.setdefault(stem, []).append(e)
 
     selected = []
     for stem, lst in groups.items():
-        # prefer exact match == stem
         exact = None
         for e in lst:
             if e["filename"] == stem:
@@ -359,7 +345,6 @@ def dedup_objects(entries: List[Dict]) -> List[Dict]:
         if exact:
             selected.append(exact)
         else:
-            # choose newest by last_modified if available, else largest size, else lexicographic
             def lm_val(x):
                 return pd.to_datetime(x.get("last_modified"), utc=True) if x.get("last_modified") is not None else pd.NaT
             lst_sorted = sorted(lst, key=lambda x: (lm_val(x) if not pd.isna(lm_val(x)) else pd.Timestamp(0), x.get("size") or 0), reverse=True)
@@ -369,7 +354,7 @@ def dedup_objects(entries: List[Dict]) -> List[Dict]:
 
 
 # ---------------------------
-# Streamlit 页面主体
+# Streamlit Page Main Body
 # ---------------------------
 
 def run_scene1():
@@ -379,7 +364,7 @@ def run_scene1():
         "从华为云 OBS 列举指定 prefix 下的文件，按时间批次统计存储量、种类（image / waveform）和地区数。"
     )
 
-    # ---- sidebar 配置 ----
+    # ---- sidebar configuration ----
     st.sidebar.header("OBS & 运行设置")
     endpoint = st.sidebar.text_input("OBS endpoint", value="https://obs.cn-north-4.myhuaweicloud.com")
     bucket = st.sidebar.text_input("Bucket 名称", value="gaoyuan-49d0")
@@ -396,28 +381,28 @@ def run_scene1():
         st.sidebar.markdown("将每行填入 object key（相对于 bucket 的路径）或完整 URL。")
         manual_input = st.sidebar.text_area("手动文件列表（换行分隔）", value="")
 
-    # 如果支持自动刷新并且用户希望，就启用
+    # If auto-refresh is supported and user wants it, enable it
     if st_autorefresh is not None:
         # st_autorefresh will cause periodic reruns
         st_autorefresh(interval=refresh_secs * 1000, key="obs_autorefresh")
     else:
         st.sidebar.info("若想启用自动刷新，请安装 `streamlit-autorefresh`（pip install streamlit-autorefresh）。当前仅支持手动刷新。")
 
-    # 手动刷新按钮（总有）
+    # Manual refresh button (always present)
     if st.sidebar.button("手动刷新"):
         st.experimental_rerun()
 
-    # ---- 列举文件 ----
+    # ---- list objects ----
     st.subheader("对象列表扫描（样本）")
     listing_placeholder = st.empty()
     try:
         entries = []
         if use_manual_list:
-            # 解析用户粘贴的行（支持完整 URL 或相对于 bucket 的 key）
+            # Parse user-pasted lines (support full URL or bucket-relative key)
             lines = [ln.strip() for ln in manual_input.splitlines() if ln.strip()]
             parsed_keys = []
             for ln in lines:
-                # 如果是 URL，解析出 path 去掉首 slash
+                # If URL, parse path and strip leading slash
                 if ln.startswith("http://") or ln.startswith("https://"):
                     p = urlparse(ln)
                     # if url contains bucket as subdomain, strip hostname part
@@ -446,7 +431,7 @@ def run_scene1():
                 raise
 
             raw = list_all_objects_under_prefix(client, bucket, prefix, max_keys=1000)
-            # raw 是 dict 列表：key,size,last_modified
+            # raw is a list of dict: key,size,last_modified
             for r in raw:
                 k = r.get("key")
                 size = r.get("size")
@@ -462,11 +447,11 @@ def run_scene1():
             listing_placeholder.warning("未找到对象。请检查 endpoint / bucket / prefix 或切换为手动粘贴列表。")
             return
 
-        # 去重
+        # Deduplicate
         entries_dedup = dedup_objects(entries)
 
-        # 构造公开 URL（尽量）
-        # 如果用户提供了 endpoint/bucket 组合，则用此方法构造；否则对手动输入 URL 保留原样
+        # Construct public URLs (best effort)
+        # If endpoint/bucket provided, construct using them; otherwise keep user-provided URLs as-is
         keys_for_url = [e["key"] for e in entries_dedup]
         try:
             urls = build_public_urls(endpoint, bucket, keys_for_url)
@@ -488,8 +473,8 @@ def run_scene1():
         df = pd.DataFrame(entries_dedup)
 
 
-        # ============ 新增：模拟数据，丰富展示效果 ============
-        # print("当前 DataFrame 列名：", list(df.columns))
+        # ============ Added: Simulated data for richer display ============
+        # print("Current DataFrame columns:", list(df.columns))
         add_simulation_data = True
         if add_simulation_data:
             import numpy as np
@@ -502,7 +487,7 @@ def run_scene1():
             fake_rows = []
             for t in extra_times:
                 for kind in ["image", "waveform"]:
-                    n_files = np.random.randint(1, 4)  # 每批次 1~3 个文件
+                    n_files = np.random.randint(1, 4)  # 1~3 files per batch
                     for i in range(n_files):
                         station = f"S{np.random.randint(1,5)}"
                         channel = f"CH{np.random.randint(1,3)}"
@@ -565,7 +550,7 @@ def run_scene1():
             regions_count=pd.NamedAgg(column="region", aggfunc=lambda s: s.nunique()),
         ).reset_index().sort_values("time_bin")
 
-        # 展示 summary 表格
+        # Show summary table
         st.write("### 批次统计（按 `{}` 取整）".format(time_bin))
         st.dataframe(agg.assign(
             total_size_MB=lambda x: (x["total_size_bytes"] / (1024 * 1024)).round(3)
@@ -578,7 +563,7 @@ def run_scene1():
             "regions_count": "地区数"
         }), width='stretch')
 
-        # 下方生成多个独立的累积指标 container（每个 metric 一个 container）
+        # Generate multiple independent cumulative metric containers (one per metric)
         st.write("### 累积指标容器（单独展示）")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -591,7 +576,7 @@ def run_scene1():
         with c4:
             st.metric("时序文件数量", f"{int((df['kind'] == 'waveform').sum())}")
 
-        # 时间序列折线图：按类型的计数随时间
+        # Time series line chart: count by type over time
         st.write("### 类型随时间变化（折线图）")
         ts = df.groupby(["time_bin", "kind"]).size().reset_index(name="count")
         ts["time_bin"] = pd.to_datetime(ts["time_bin"])
@@ -604,7 +589,7 @@ def run_scene1():
         st.altair_chart(chart, use_container_width=True)
 
 
-        # 存储量随时间（堆叠面积图）
+        # Storage over time (stacked area chart)
         st.write("### 存储量随时间（按类型）")
         sz = df.groupby(["time_bin", "kind"]).agg(size_bytes=("size", "sum")).reset_index()
         sz["size_MB"] = sz["size_bytes"] / (1024 * 1024)
@@ -617,7 +602,7 @@ def run_scene1():
         st.altair_chart(area, use_container_width=True)
 
 
-        # 最近文件表（可点击 URL）
+        # Recent files table (clickable URLs)
         st.write("### 最近文件明细（去重后样例）")
         display_df = df[["last_modified_parsed", "filename", "kind", "station", "region", "size", "url"]].rename(
             columns={"last_modified_parsed": "last_modified", "size": "bytes"}
@@ -628,11 +613,11 @@ def run_scene1():
         display_df["url_link"] = display_df.apply(lambda r: _mk_link(r), axis=1)
         st.dataframe(display_df[["last_modified", "filename", "kind", "station", "region", "bytes", "url_link"]], width='stretch')
 
-        # 下载 CSV
+        # Download CSV
         csv = agg.to_csv(index=False)
         st.download_button("下载批次统计 CSV", data=csv, file_name="obs_batches_summary.csv", mime="text/csv")
 
-        # # 简单地图（如果 lat/lon 有值）
+        # # Simple map (if lat/lon available)
         # if df["lat"].notna().any() and df["lon"].notna().any():
         #     try:
         #         import pydeck as pdk
@@ -646,11 +631,11 @@ def run_scene1():
         #             "ScatterplotLayer",
         #             data=stations,
         #             get_position=["lon", "lat"],
-        #             get_radius=50000,  # 缩放因子
+        #             get_radius=50000,  # Scale factor
         #             pickable=True,
         #             auto_highlight=True
         #         )
-        #         # 视角：若有多个点则以中点为中心
+        #         # View: center on midpoint if multiple points
         #         view_state = pdk.ViewState(latitude=stations["lat"].mean(), longitude=stations["lon"].mean(), zoom=2, pitch=0)
         #         r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{station}\nCount: {count}"})
         #         st.pydeck_chart(r)
@@ -662,8 +647,6 @@ def run_scene1():
         st.exception(e)
 
 
-# 当以 streamlit run app.py 运行时，直接调用
+# When run with streamlit run app.py, call directly
 if __name__ == "__main__":
     run_scene1()
-
-

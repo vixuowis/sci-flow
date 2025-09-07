@@ -1,6 +1,6 @@
 # app.py
 """
-Streamlit 页面：从华为云 OBS 列出 JPG，读取 EXIF GPS 并按 DJI index 排序绘制轨迹（折线 + 点）
+Streamlit page: List JPGs from Huawei OBS, read EXIF GPS, and plot trajectory (polyline + points) sorted by DJI index
 """
 
 import io
@@ -20,14 +20,14 @@ from PIL import Image, ExifTags
 from obs import ObsClient  # pip install esdk-obs-python
 
 # -----------------------
-# 配置（可改为从环境变量读取或通过 Streamlit UI 修改）
+# Configuration (can be modified to read from environment variables or Streamlit UI)
 # -----------------------
 ENDPOINT = "https://obs.cn-north-4.myhuaweicloud.com"
 BUCKET = "gaoyuan-49d0"
 PREFIX = "森林数据-rgb+激光雷达/海珠湿地公园L2激光雷达数据20250310/海珠湿地公园1号测区正射/DCIM/DJI_202503101211_001_湿地1号场地/"
 
 # -----------------------
-# 辅助函数：OBS 列表 -> 返回 object keys（不含 bucket）
+# Helper function: OBS list -> return object keys (excluding bucket)
 # -----------------------
 def _create_obs_client(endpoint: str, access_key: Optional[str], secret_key: Optional[str]) -> ObsClient:
     if access_key and secret_key:
@@ -50,7 +50,7 @@ def list_all_objects_under_prefix(client: ObsClient, bucket: str, prefix: str, m
             key = getattr(c, "key", None) or (c.get("key") if isinstance(c, dict) else None)
             if key:
                 keys.append(key)
-        # 翻页判断
+        # pagination check
         if not getattr(body, "is_truncated", False):
             break
         next_marker = getattr(body, "next_marker", None) or getattr(body, "nextMarker", None)
@@ -91,7 +91,7 @@ def build_image_key_url_list(
     exts: List[str] = (".jpg", ".jpeg"),
 ) -> List[Tuple[str, str]]:
     """
-    返回 [(object_key, public_url), ...]，只含图片扩展名（不区分大小写）。
+    Return [(object_key, public_url), ...], only containing image extensions (case-insensitive).
     """
     prefix = unquote(prefix)
     client = _create_obs_client(endpoint, access_key, secret_key)
@@ -109,7 +109,7 @@ def build_image_key_url_list(
 
 
 # -----------------------
-# EXIF -> GPS 解析
+# EXIF -> GPS parsing
 # -----------------------
 # build mapping tables once
 TAG_LABELS = ExifTags.TAGS
@@ -118,7 +118,7 @@ GPSTAGS = ExifTags.GPSTAGS
 
 def _ratio_to_float(r) -> float:
     """
-    兼容 PIL 里常见的 IFDRational 或 tuple((num,den)) 等格式。
+    Compatible with common formats in PIL such as IFDRational or tuple((num,den)).
     """
     try:
         # IFDRational has numerator, denominator
@@ -152,7 +152,7 @@ def _dms_to_dd(dms) -> float:
 
 def extract_gps_from_pil_image(img: Image.Image) -> Tuple[Optional[float], Optional[float], Optional[str]]:
     """
-    从 PIL.Image 中提取 (lat, lon, datetime_str)；若无 GPS 返回 (None, None, None)
+    Extract (lat, lon, datetime_str) from PIL.Image; if no GPS return (None, None, None)
     """
     try:
         exif_raw = img._getexif()
@@ -162,7 +162,7 @@ def extract_gps_from_pil_image(img: Image.Image) -> Tuple[Optional[float], Optio
         for tag_id, value in exif_raw.items():
             tag = TAG_LABELS.get(tag_id, tag_id)
             exif[tag] = value
-        # datetime 原始标签
+        # original datetime tag
         dt = exif.get("DateTimeOriginal") or exif.get("DateTime") or None
 
         gps_raw = exif.get("GPSInfo")
@@ -199,12 +199,12 @@ def extract_gps_from_pil_image(img: Image.Image) -> Tuple[Optional[float], Optio
 
 
 # -----------------------
-# 从 URL 下载并解析 EXIF（缓存）
+# Download from URL and parse EXIF (with cache)
 # -----------------------
 @st.cache_data(show_spinner=True)
 def fetch_image_and_extract_gps(url: str) -> Dict[str, Any]:
     """
-    下载图片并返回 dict: {url, success(bool), lat, lon, datetime, error}
+    Download image and return dict: {url, success(bool), lat, lon, datetime, error}
     """
     out = {"url": url, "success": False, "lat": None, "lon": None, "datetime": None, "error": None}
     try:
@@ -223,18 +223,18 @@ def fetch_image_and_extract_gps(url: str) -> Dict[str, Any]:
 
 
 # -----------------------
-# 解析 DJI 文件名中的 index（尽量兼容多种命名）
+# Parse DJI filename index (try to be compatible with multiple naming formats)
 # -----------------------
 def parse_dji_index_from_basename(basename: str) -> Optional[int]:
     """
-    例如： DJI_20250310121732_0003_D.JPG -> index = 3
-    若无法解析返回 None
+    Example: DJI_20250310121732_0003_D.JPG -> index = 3
+    Return None if cannot parse
     """
-    # 常见模式
+    # common pattern
     m = re.search(r'DJI_(?P<dt>\d{14})_(?P<index>\d+)_', basename, flags=re.I)
     if m:
         return int(m.group("index"))
-    # 退而求其次：最后一个下划线后的数字（文件扩展名前）
+    # fallback: last number after underscore before file extension
     m2 = re.search(r'_(?P<index>\d+)(?:\.[^.]+)$', basename)
     if m2:
         return int(m2.group("index"))
@@ -242,7 +242,7 @@ def parse_dji_index_from_basename(basename: str) -> Optional[int]:
 
 
 # -----------------------
-# 主流程：在 Streamlit 页面中展示
+# Main workflow: Display in Streamlit page
 # -----------------------
 def run_scene5():
     st.set_page_config(page_title="OBS JPG EXIF 轨迹绘制", layout="wide")
@@ -252,7 +252,7 @@ def run_scene5():
         "说明：脚本会列出指定 OBS 前缀下的 JPG/JPEG 文件，读取 EXIF GPS，然后按 DJI index 排序并绘制轨迹。"
     )
 
-    # 允许用户在 UI 中覆盖默认配置
+    # Allow user to override default config via UI
     with st.expander("OBS 配置（可在此覆盖）", expanded=False):
         endpoint = st.text_input("OBS Endpoint", value=ENDPOINT)
         bucket = st.text_input("Bucket", value=BUCKET)
@@ -271,7 +271,7 @@ def run_scene5():
                 st.info("在该 prefix 下未找到 JPG/JPEG 文件。请检查前缀或 OBS 权限。")
                 st.stop()
 
-            # 构造基础表格：key / url / basename / index
+            # build base table: key / url / basename / index
             rows = []
             for key, url in pairs:
                 basename = os.path.basename(key)
@@ -280,18 +280,18 @@ def run_scene5():
 
             df_candidates = pd.DataFrame(rows)
             
-            # --- 新逻辑开始 ---
-            # 1. 筛选出能成功解析出 index 的文件
+            # --- new logic start ---
+            # 1. Filter out files with valid index
             df_indexed = df_candidates.dropna(subset=['index']).copy()
             if df_indexed.empty:
                 st.error("在指定路径下，没有找到任何文件名符合 'DJI_..._NNNN_...' 格式的图片。")
-                st.dataframe(df_candidates) # 显示所有找到的文件以供调试
+                st.dataframe(df_candidates) # show all found files for debugging
                 st.stop()
             
             df_indexed['index'] = df_indexed['index'].astype(int)
 
-            # 2. 创建一个从 index 到文件信息的映射，用于快速查找
-            # 如果有重复的 index，只保留第一个
+            # 2. Create a mapping from index to file info for quick lookup
+            # If duplicate index exists, keep the first one
             indexed_files_map = {
                 r['index']: r.to_dict()
                 for _, r in df_indexed.sort_values('index').iterrows()
@@ -300,13 +300,13 @@ def run_scene5():
             meta_rows = []
             skipped = []
 
-            # 3. 找到序列的起始点（最小的 index）
+            # 3. Find the starting point of the sequence (minimum index)
             current_index = df_indexed['index'].min()
             start_index = current_index
 
             st.info(f"发现有效DJI图片文件，将从最小索引 index={start_index} 开始连续读取...")
 
-            # 4. 严格按连续索引处理，直到序列中断
+            # 4. Process strictly in consecutive order until sequence breaks
             while current_index in indexed_files_map:
                 file_data = indexed_files_map[current_index]
                 basename = file_data["basename"]
@@ -314,12 +314,12 @@ def run_scene5():
                 
                 # st.text(f"正在读取图片: {basename} (index={current_index})")
 
-                # 下载并解析 EXIF
+                # Download and parse EXIF
                 meta = fetch_image_and_extract_gps(url)
                 if not meta["success"] or meta["lat"] is None or meta["lon"] is None:
                     skipped.append({"basename": basename, "error": meta.get("error", "no GPS EXIF")})
-                    # 如果序列中的某个文件没有GPS，可以选择中断或跳过
-                    # 此处选择中断，因为轨迹需要连续的位置信息
+                    # If a file in sequence has no GPS, we can either break or skip
+                    # Here we choose to break, since trajectory requires continuous location info
                     st.warning(f"图片 {basename} 无法获取有效GPS信息，序列处理中断。")
                     break
                 
@@ -335,11 +335,11 @@ def run_scene5():
                     }
                 )
                 
-                # 准备检查下一个连续的 index
+                # prepare to check next consecutive index
                 current_index += 1
             
             st.success(f"图片序列读取完成。序列从 index {start_index} 开始，在 index {current_index - 1} 之后中断，因为未在 OBS 中找到 index 为 {current_index} 的文件或其中有文件GPS信息缺失。")
-            # --- 新逻辑结束 ---
+            # --- new logic end ---
 
             if not meta_rows:
                 st.error("没有任何图片被成功处理（序列为空或第一个文件就失败了）。")
@@ -348,20 +348,20 @@ def run_scene5():
                 st.stop()
 
             df = pd.DataFrame(meta_rows)
-            # 此时的 df 已经是按 index 严格排序的了，无需再次排序
-            df["order"] = np.arange(len(df))  # 用于确保顺序
+            # df is already strictly ordered by index, no need to sort again
+            df["order"] = np.arange(len(df))  # ensure sequence order
 
-            # 地图中心
+            # map center
             center_lat = float(df["lat"].mean())
             center_lon = float(df["lon"].mean())
 
-            # 构造路径（经度在前）
+            # build path (longitude first)
             path = [[float(lon), float(lat)] for lon, lat in zip(df["lon"], df["lat"])]
 
-            # pydeck layers (这部分代码无需改动)
+            # pydeck layers (no change needed)
             layers = []
 
-            # 折线（路径）
+            # polyline (trajectory)
             if len(path) >= 2:
                 path_data = [{"path": path, "name": "trajectory"}]
                 layers.append(
@@ -377,16 +377,16 @@ def run_scene5():
                     )
                 )
 
-            # 点层（可点击查看信息）
+            # point layer (clickable to view info)
             df_points = df.copy()
-            # label 用于 tooltip
+            # label for tooltip
             df_points["label"] = df_points["basename"].astype(str) + " | idx:" + df_points["index"].fillna(-1).astype(int).astype(str)
             layers.append(
                 pdk.Layer(
                     "ScatterplotLayer",
                     data=df_points,
                     get_position="[lon, lat]",
-                    get_radius=50,  # 半径（米）
+                    get_radius=50,  # radius (meters)
                     radius_min_pixels=4,
                     radius_max_pixels=12,
                     get_fill_color=[200, 30, 30],
@@ -395,8 +395,8 @@ def run_scene5():
                 )
             )
 
-            # 文本标签（显示序号或时间）
-            df_points["label_text"] = df_points["order"].astype(str)  # 用 order 作为点编号
+            # text labels (show sequence number or time)
+            df_points["label_text"] = df_points["order"].astype(str)  # use order as point index
             layers.append(
                 pdk.Layer(
                     "TextLayer",

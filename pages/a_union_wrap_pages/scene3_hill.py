@@ -11,17 +11,15 @@ import requests
 
 #!/usr/bin/env python3
 """
+Provide function fetch_and_draw_satellite(geojson_path, out_dir, z=16, style=6, padding_ratio=0.06, max_size=(2048,2048)):
+ - Automatically adjust zoom so that the final stitched image does not exceed max_size (default 2048x2048)
+ - Read GeoJSON and extract rectangle/polygon coordinates
+ - Compute the expanded bbox covering all rectangles
+ - Download and stitch Gaode satellite tiles
+ - Draw rectangles onto the image
+ - Return output image path
 
-
-提供函数 fetch_and_draw_satellite(geojson_path, out_dir, z=16, style=6, padding_ratio=0.06, max_size=(2048,2048))：
- - 自动调整 zoom，使得最终拼接图像不会超过 max_size（默认 2048x2048）
- - 读取 GeoJSON，提取矩形/多边形坐标
- - 计算覆盖所有矩形的扩展 bbox
- - 下载并拼接高德卫星瓦片
- - 绘制矩形到图像
- - 返回输出图像路径
-
-附带测试用例。
+Includes test cases.
 """
 
 TILE_URL = "https://webst0{srv}.is.autonavi.com/appmaptile?style={style}&x={x}&y={y}&z={z}&scl=1&ltype=11"
@@ -117,9 +115,9 @@ def expand_bbox(min_lon, min_lat, max_lon, max_lat, padding_ratio=0.05):
 
 def draw_polygons_on_image(base_img, polygons, z, left_px, top_px, outline=(0,0,0), width=3, fill=(255,255,0,255)):
     """
-    polygons: 多边形列表
-    outline: 边框颜色, 黑色
-    fill: 填充颜色, 黄色不透明
+    polygons: list of polygons
+    outline: border color, black
+    fill: fill color, opaque yellow
     """
     draw = ImageDraw.Draw(base_img, 'RGBA')
     for poly in polygons:
@@ -142,7 +140,7 @@ def draw_polygons_on_image(base_img, polygons, z, left_px, top_px, outline=(0,0,
 
 
 def adjust_zoom_to_fit(min_lon, min_lat, max_lon, max_lat, z, max_size):
-    """自动调整 zoom 直到拼接图像不超过 max_size"""
+    """Automatically adjust zoom until the stitched image does not exceed max_size"""
     while z > 3:
         left_px, top_px = lonlat_to_global_pixel(min_lon, max_lat, z)
         right_px, bottom_px = lonlat_to_global_pixel(max_lon, min_lat, z)
@@ -162,7 +160,7 @@ def fetch_and_draw_satellite(geojson_path, out_dir, z=16, style=6, padding_ratio
     min_lon, min_lat, max_lon, max_lat = bbox_of_polygons(polys)
     min_lon, min_lat, max_lon, max_lat = expand_bbox(min_lon, min_lat, max_lon, max_lat, padding_ratio)
 
-    # 自动调整 zoom
+    # Automatically adjust zoom
     z = adjust_zoom_to_fit(min_lon, min_lat, max_lon, max_lat, z, max_size)
     print(f"Using zoom {z}")
 
@@ -195,7 +193,7 @@ def run_scene3():
 
     with st.spinner("正在加载并绘制轨迹图..."):
         try:
-            # 1. 下载 geojson 到临时文件
+            # 1. Download geojson to temporary file
             tmpdir = tempfile.mkdtemp(prefix="scene3_")
             geojson_path = os.path.join(tmpdir, "input.geojson")
             resp = requests.get(url, timeout=30)
@@ -203,7 +201,7 @@ def run_scene3():
             with open(geojson_path, "wb") as f:
                 f.write(resp.content)
 
-            # 2. 调用 fetch_and_draw_satellite，返回生成的图片路径
+            # 2. Call fetch_and_draw_satellite, return generated image path
             _, over_path = fetch_and_draw_satellite(
                 geojson_path=geojson_path,
                 out_dir=tmpdir,
@@ -213,7 +211,7 @@ def run_scene3():
                 max_size=(2048, 2048),
             )
 
-            # 3. 用 st.image 展示 with_rects 图
+            # 3. Display with_rects image using st.image
             over_img = Image.open(over_path)
             st.image(over_img, caption="轨迹图 (with_rects)", use_container_width=True)
 
