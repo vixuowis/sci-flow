@@ -19,7 +19,7 @@ st.set_page_config(
 
 # 主标题和描述
 st.title("🌐 科学数据流管理平台")
-st.markdown("### 多场景、多模态数据的统一管理与可视化解决方案")
+st.markdown("### 多场景、多模态大数据的统一管理与可视化解决方案")
 
 # 添加分隔线
 st.divider()
@@ -28,7 +28,7 @@ st.divider()
 with st.container():
     st.markdown("## 📋 项目概述")
     st.markdown("""
-    本平台是一个基于 **Streamlit** 开发的综合性科学数据管理系统，专门针对多种自然环境监测场景设计。
+    本平台是一个综合性科学数据管理系统，专门针对多种自然环境监测场景设计。
     平台集成了华为云 OBS 对象存储服务，实现了从数据采集、存储、处理到可视化展示的全流程管理。
     
     **核心特性：**
@@ -51,7 +51,7 @@ with col1:
         st.markdown("""
         **多源数据的统一展示**
         
-        将不同来源、不同格式的数据进行标准化处理和联合展示：
+        将不同来源和格式的数据标准化处理和联合展示：
         - 地震波形 3D 可视化
         - 海洋观测数据地图展示
         - 遥感影像轨迹绘制
@@ -279,13 +279,10 @@ with st.sidebar:
     提供统一的数据管理和可视化服务。
     
     **当前版本**: v1.0.0  
-    **更新日期**: 2025-01-01  
-    **技术支持**: support@sciflow.com
+    **更新日期**: 2025-09
     """)
     
     st.markdown("### 📚 相关资源")
     st.markdown("""
-    - [Streamlit 文档](https://docs.streamlit.io)
-    - [华为云 OBS](https://www.huaweicloud.com/product/obs.html)
-    - [GitHub 仓库](https://github.com/vixuowis/sci-flow)
+    - [GitHub项目仓库](https://github.com/vixuowis/sci-flow)
     """)
