@@ -252,8 +252,13 @@ def evenly_sample_per_minute(df, n=30):
         out = g.iloc[idx].copy()
         out["slot"] = np.arange(len(out))
         return out
-
-    out = df.groupby("minute", group_keys=False).apply(_sampler)
+    try:
+        # 新版pandas兼容方式
+        out = df.groupby("minute", group_keys=False).apply(_sampler, include_groups=False)
+    except TypeError:
+        # 旧版pandas兜底方式
+        out = df.groupby("minute", group_keys=False).apply(_sampler)
+    #out = df.groupby("minute", group_keys=False).apply(_sampler)
     return out.reset_index(drop=True)
 
 # ------------------------------
