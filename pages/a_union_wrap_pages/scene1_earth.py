@@ -255,6 +255,9 @@ def run_scene1():
             # 旧版pandas兜底方式
             out = df.groupby("minute", group_keys=False).apply(_sampler)
         #out = df.groupby("minute", group_keys=False).apply(_sampler)
+        # 确保minute列没有丢失
+        if "minute" not in out.columns and "minute" in df.columns:
+            out = out.reset_index()
         return out.reset_index(drop=True)
 
     # ------------------------------
