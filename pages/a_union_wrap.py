@@ -1,6 +1,13 @@
+from session_fix import page_setup
+
+from integration_helper import check_authentication, add_auth_sidebar
+user_info = check_authentication()
+add_auth_sidebar()
+
 from pages.a_union_wrap_pages import run_scene1, run_scene2, run_scene3, run_scene4, run_scene5
 from utils import *
-
+if 'data_scene' not in st.session_state:
+    st.session_state.data_scene = None
 st.title("联合封装")
 
 st.markdown("# Mapping Demo")

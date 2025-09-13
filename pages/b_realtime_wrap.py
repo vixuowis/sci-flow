@@ -1,4 +1,10 @@
+from session_fix import page_setup
+
 import streamlit as st
+
+from integration_helper import check_authentication, add_auth_sidebar
+user_info = check_authentication()
+add_auth_sidebar()
 
 from pages.b_realtime_wrap_pages import run_scene1, run_scene2, run_scene3, run_scene4, run_scene5
 

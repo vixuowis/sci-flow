@@ -4,6 +4,12 @@
 提供项目介绍和功能导航
 """
 
+from session_fix import page_setup
+
+from integration_helper import check_authentication, add_auth_sidebar
+user_info = check_authentication()
+add_auth_sidebar()
+
 import streamlit as st
 import pandas as pd
 import numpy as np

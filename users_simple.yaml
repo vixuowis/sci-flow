@@ -1,0 +1,19 @@
+settings:
+  app_name: Sci-Flow
+  session_timeout: 3600
+users:
+  admin:
+    email: admin@sciflow.com
+    name: 管理员
+    password_hash: 17421e17eebc76ee614cc41daf4ad18898296e4d3cd6d128c26c5e9fea7720b8
+    role: admin
+  researcher1:
+    email: researcher1@sciflow.com
+    name: 研究员1
+    password_hash: 3a16193cce302175ddcc79ecbf4fb9543763c5bc2d74de69a776c7a9c71f9cf8
+    role: researcher
+  user1:
+    email: user1@sciflow.com
+    name: 用户1
+    password_hash: fba409ff3670fc60e694a4ced066575d31f518f66737271c36258d2bdc9d7b5c
+    role: user

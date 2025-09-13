@@ -1,0 +1,25 @@
+# Streamlit Authenticator 配置文件
+credentials:
+  usernames:
+    admin:
+      email: admin@sciflow.com
+      name: 管理员
+      password: $2b$12$vWTC3lnL1HqX8M2h.82Lc.p6c9J0F9xuxOxbp7aMBhpUIwqaQjeoK
+    researcher1:
+      email: researcher1@sciflow.com  
+      name: 研究员1
+      password: $2b$12$IvtkZBCer7JW.SZVtTMv8eCB6p.5JbN0lLQn8tP9eFI7K98zax0IO
+    user1:
+      email: user1@sciflow.com
+      name: 用户1  
+      password: $2b$12$Q24QMOH5tcuvvu/Jl4qtCO1iWLsBrxk0m/rpdZYiYV442mavYI2t2
+
+cookie:
+  name: sci_flow_cookie
+  key: sci_flow_secret_key_2024
+  expiry_days: 7
+
+preauthorized:
+  emails:
+  - admin@sciflow.com
+  - researcher@sciflow.com

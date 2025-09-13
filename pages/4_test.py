@@ -1,6 +1,6 @@
 # app.py
 # Streamlit 页面：按时间动态在地图上展示各站点振幅的 3D 柱状图（每分钟均匀30帧）
-
+from session_fix import page_setup
 import io
 import os
 import re
@@ -17,8 +17,10 @@ from obspy import read
 #    文件名必须形如：IU_AFI_-13.91_-171.78_waveforms.mseed
 # ==============================
 
-import os
-import re
+from integration_helper import check_authentication, add_auth_sidebar
+user_info = check_authentication()
+add_auth_sidebar()
+
 from typing import List, Tuple, Optional
 from urllib.parse import urlparse, quote, unquote
 

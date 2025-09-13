@@ -1,6 +1,7 @@
 import streamlit as st
 
 pg = st.navigation([
+    st.Page("main_production.py", title="登录", icon="🚀"),
     st.Page("pages/0_home.py", title="首页", icon="🏠"),
     st.Page("pages/a_union_wrap.py", title="联合封装", icon="🔗"),
     st.Page("pages/b_realtime_wrap.py", title="实时封装", icon="📈"),
