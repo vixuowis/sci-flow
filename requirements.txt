@@ -8,3 +8,5 @@ streamlit-tree-select
 obspy
 beautifulsoup4
 streamlit-autorefresh
+pyyaml
+streamlit-authenticator

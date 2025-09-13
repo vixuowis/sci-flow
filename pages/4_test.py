@@ -253,7 +253,7 @@ def evenly_sample_per_minute(df, n=30):
         out["slot"] = np.arange(len(out))
         return out
 
-    out = df.groupby("minute", group_keys=False).apply(_sampler)
+    out = df.groupby("minute", group_keys=False).apply(_sampler, include_groups=False)
     return out.reset_index(drop=True)
 
 # ------------------------------
