@@ -5,6 +5,7 @@ pg = st.navigation([
     st.Page("pages/0_home.py", title="首页", icon="🏠"),
     st.Page("pages/a_union_wrap.py", title="联合封装", icon="🔗"),
     st.Page("pages/b_realtime_wrap.py", title="实时封装", icon="📈"),
+    st.Page("pages/d_dli_flink.py", title="Flink 作业", icon="💻"),
     st.Page("pages/c_safe_release.py", title="可控发布", icon="✅"),
 ])
 

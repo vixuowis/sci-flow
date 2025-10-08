@@ -10,3 +10,5 @@ beautifulsoup4
 streamlit-autorefresh
 pyyaml
 streamlit-authenticator
+huaweicloudsdkcore
+huaweicloudsdkdli
